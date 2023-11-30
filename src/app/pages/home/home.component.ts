@@ -1,11 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
+import { GlobeComponent } from '../../components/globe/globe.component';
 
 @Component({
-  selector: 'vini-home',
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.scss'],
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, GlobeComponent],
 })
 export class HomeComponent {}
