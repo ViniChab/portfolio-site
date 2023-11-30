@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, AfterViewInit, ViewChild, ElementRef } from '@angular/core';
+import { take } from 'rxjs';
 
 import { GlobeControllerService } from 'src/app/services/globe-controller/globe-controller.service';
 
@@ -31,5 +32,15 @@ export class GlobeComponent implements AfterViewInit {
     this.globeControllerService.setOrbitControls();
     this.globeControllerService.animateModel();
     this.globeControllerService.listenToResize();
+
+    this.listenForInitialMovement();
+  }
+
+  private listenForInitialMovement() {
+    this.globeControllerService.rotationFinishing$
+      .pipe(take(1))
+      .subscribe(() => {
+        console.log('### LMAO?');
+      });
   }
 }

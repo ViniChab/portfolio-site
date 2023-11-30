@@ -2,19 +2,26 @@ import { Injectable } from '@angular/core';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { Subject } from 'rxjs';
 
 const CAMERA_PARAMS = [75, window.innerWidth / window.innerHeight, 0.1, 1000];
 const MODEL_PATH = '/assets/earth/earth.glb';
 const WHITE = 0xffffff;
+const INITIAL_ROTATION = Math.PI * 2; // One full rotation
+const INITIAL_ROTATION_SPEED = 0.02;
 
 @Injectable()
 export class GlobeControllerService {
-  private model!: THREE.Group;
-  private isReturningToInitialPosition = false;
+  public rotationFinishing$ = new Subject<boolean>();
 
+  private isReturningToInitialPosition = false;
+  private isInitialRotationComplete = false;
+  private currentRotation = 0;
+
+  private model!: THREE.Group;
   private renderer = new THREE.WebGLRenderer({ alpha: true });
   private scene = new THREE.Scene();
-  private initialCameraPosition = new THREE.Vector3();
+  private initialCameraPos = new THREE.Vector3();
   private camera = new THREE.PerspectiveCamera(...CAMERA_PARAMS);
   private light = new THREE.DirectionalLight(WHITE, 3);
   private orbitControls = new OrbitControls(
@@ -31,9 +38,8 @@ export class GlobeControllerService {
           this.model = gltf.scene;
           this.model.position.set(0, 0, 0);
           this.model.scale.set(2.8, 2.8, 2.8);
-          this.model.rotateY(-1);
+          this.initialCameraPos.copy(this.camera.position);
           this.resizeModel();
-          this.initialCameraPosition.copy(this.camera.position);
 
           this.scene.add(this.model);
           resolve(undefined);
@@ -82,6 +88,38 @@ export class GlobeControllerService {
     });
   }
 
+  public animateModel() {
+    requestAnimationFrame(this.animateModel.bind(this));
+
+    if (this.isReturningToInitialPosition) {
+      this.returnCameraToInitialPosition();
+    }
+
+    this.orbitControls.update();
+    this.light.position.copy(this.camera.position);
+
+    if (!this.isInitialRotationComplete && this.model) {
+      if (INITIAL_ROTATION - this.currentRotation < 0.1) {
+        this.rotationFinishing$.next(true);
+      }
+
+      if (INITIAL_ROTATION - this.currentRotation > 0.001) {
+        let factor = (1 - this.currentRotation / INITIAL_ROTATION) * 5;
+        this.model.rotateY(factor * INITIAL_ROTATION_SPEED);
+        this.currentRotation += factor * INITIAL_ROTATION_SPEED;
+      } else {
+        this.isInitialRotationComplete = true;
+        this.model.rotation.y = 0;
+      }
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  public listenToResize() {
+    window.addEventListener('resize', () => this.resizeModel());
+  }
+
   /**
    * A bit arbitrary but fine-tuned values to make the model fit the screen in a comfortable way.
    **/
@@ -102,40 +140,20 @@ export class GlobeControllerService {
     this.camera.updateProjectionMatrix();
   }
 
-  public animateModel = () => {
-    requestAnimationFrame(this.animateModel);
-
-    if (this.isReturningToInitialPosition) {
-      this.returnCameraToInitialPosition();
-    }
-
-    this.orbitControls.update();
-    this.light.position.copy(this.camera.position);
-
-    this.renderer.render(this.scene, this.camera);
-
-    if (this.model?.rotation?.y < 0.1) {
-      this.model.rotateY(0.1);
-    }
-  };
-
-  public listenToResize() {
-    window.addEventListener('resize', () => this.resizeModel());
-  }
-
   private animateCameraReturn = () => {
     if (!this.isReturningToInitialPosition) return;
 
-    const lerpFactor = 0.00015;
-
+    const distance = this.camera.position.distanceTo(this.initialCameraPos);
     const direction = new THREE.Vector3()
-      .subVectors(this.initialCameraPosition, this.camera.position)
+      .subVectors(this.initialCameraPos, this.camera.position)
       .normalize();
 
     const angle = direction.angleTo(this.camera.position.clone().normalize());
+    const lerpFactor = Math.max(distance / 50000, 0.0001);
 
-    if (angle < 1.6) {
+    if (distance < 0.1) {
       this.isReturningToInitialPosition = false;
+      this.camera.position.copy(this.initialCameraPos);
       return;
     }
 
